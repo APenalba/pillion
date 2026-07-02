@@ -82,7 +82,10 @@ targets:
           if [ "$PLATFORM_NAME" = "iphonesimulator" ]; then KN_TARGET="IosSimulatorArm64"; else KN_TARGET="IosArm64"; fi
           ./gradlew ":composeApp:assemble${KN_TARGET}MainResources"
           KN_LC=$(echo "$KN_TARGET" | awk '{print tolower(substr($0,1,1)) substr($0,2)}')
-          SRC=$(find composeApp/build -type d -path "*aggregated-resources/${KN_LC}/composeResources" | head -1)
+          # CMP's resource output dir drifts across plugin versions (aggregated-resources/<tgt> →
+          # assembledResources/<tgt>Main); match either so app_icon & co. actually land in the bundle.
+          # Without this the copy silently no-ops and painterResource() crashes at runtime (Settings).
+          SRC=$(find composeApp/build -type d \( -path "*/${KN_LC}Main/composeResources" -o -path "*/${KN_LC}/composeResources" \) | head -1)
           DEST="${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/compose-resources"
           if [ -n "$SRC" ]; then
             mkdir -p "$DEST"
