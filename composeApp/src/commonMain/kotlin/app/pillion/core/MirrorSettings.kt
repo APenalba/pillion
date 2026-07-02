@@ -11,9 +11,4 @@ data class MirrorSettings(
     val quality: Int = 40,
     val maxFps: Int = 15,
     val dashResolution: DashResolution = DashResolution.DEFAULT,
-    /**
-     * Compatibility mode. Both platforms now always stream one frame at a time (stop-and-wait), so
-     * this is currently inert — kept as a user-facing escape hatch for future transport tuning.
-     */
-    val compatMode: Boolean = false,
 )

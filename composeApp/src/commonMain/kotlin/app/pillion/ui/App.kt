@@ -60,7 +60,6 @@ fun App(
         var showDashOnboarding by rememberSaveable { mutableStateOf(false) }
         var dashEnabled by remember { mutableStateOf(settingsStore?.dashEnabled() ?: false) }
         var dashResolution by remember { mutableStateOf(settingsStore?.dashResolution() ?: DashResolution.DEFAULT) }
-        var compatMode by remember { mutableStateOf(settingsStore?.compatMode() ?: false) }
         var showDisclaimer by rememberSaveable { mutableStateOf(true) }
         var update by remember { mutableStateOf<UpdateInfo?>(null) }
         var updateDismissed by rememberSaveable { mutableStateOf(false) }
@@ -88,8 +87,6 @@ fun App(
                 onQuality = { quality = it },
                 maxFps = maxFps,
                 onMaxFps = { maxFps = it },
-                compatMode = compatMode,
-                onCompatMode = { compatMode = it; settingsStore?.setCompatMode(it) },
                 themeMode = themeMode,
                 onThemeMode = { themeMode = it; settingsStore?.setThemeMode(it) },
                 dashSupported = dashSetup != null,
@@ -111,7 +108,7 @@ fun App(
                 state = state,
                 update = update,
                 onOpenSettings = { showSettings = true },
-                onStart = { controller.start(MirrorSettings(quality, maxFps, dashResolution, compatMode)) },
+                onStart = { controller.start(MirrorSettings(quality, maxFps, dashResolution)) },
                 onStop = controller::stop,
             )
         }
