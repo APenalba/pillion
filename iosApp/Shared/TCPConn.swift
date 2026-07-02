@@ -27,6 +27,10 @@ final class TCPConn: DashConn {
             p.withMemoryRebound(to: sockaddr.self, capacity: 1) { Darwin.connect(s, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) }
         }
         guard r == 0 else { Darwin.close(s); throw err("connect(\(host):\(port)) failed — emulator running in TCP mode?") }
+        // TCP_NODELAY: with stop-and-wait, Nagle holds each frame's trailing partial segment until
+        // the receiver's delayed ACK (~100-200ms/frame). Android sets tcpNoDelay=true; match it.
+        var one: Int32 = 1
+        setsockopt(s, IPPROTO_TCP, TCP_NODELAY, &one, socklen_t(MemoryLayout<Int32>.size))
         fd = s
         logger?("TCP connected to \(host):\(port)")
     }
