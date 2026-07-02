@@ -9,11 +9,11 @@ package app.pillion.core
  */
 data class MirrorSettings(
     val quality: Int = 40,
-    val maxFps: Int = 25,
+    val maxFps: Int = 15,
     val dashResolution: DashResolution = DashResolution.DEFAULT,
     /**
-     * Compatibility mode: send one frame at a time (classic stop-and-wait) instead of the faster
-     * 2-frames-in-flight pipeline. Turn on if a dash stutters, freezes, or drops the connection.
+     * Compatibility mode. Both platforms now always stream one frame at a time (stop-and-wait), so
+     * this is currently inert — kept as a user-facing escape hatch for future transport tuning.
      */
     val compatMode: Boolean = false,
 )
