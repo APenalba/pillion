@@ -19,6 +19,8 @@ targets:
     platform: iOS
     sources:
       - path: iosApp
+      # Shared with the broadcast extension (NaviLite transport + BroadcastStatus diagnostics).
+      - path: Shared
     configFiles:
       Debug: Signing.xcconfig
       Release: Signing.xcconfig
