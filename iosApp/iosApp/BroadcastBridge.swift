@@ -5,23 +5,22 @@ import ComposeApp
 
 /// Connects the shared Compose UI to iOS screen broadcasting:
 /// - the Pillion "Start mirroring" button → triggers the system broadcast picker,
-/// - the extension's broadcast start/stop/status Darwin notifications → the shared `MirrorState`,
-/// - a live MFi accessory preflight so Connection status is visible *before* Start mirroring.
+/// - a visible fallback picker (ReplayKit has no public API — programmatic taps fail on some iOS builds),
+/// - the extension's Darwin start/stop/status → `MirrorState`,
+/// - a live MFi accessory preflight so Connection status is visible before Start mirroring.
 final class BroadcastBridge: ObservableObject {
-    let controller: BroadcastMirrorController        // NaviLite (Bluetooth / MFi via ReplayKit)
-    let sdlController: SdlBroadcastController         // SDL (USB / iAP2)
+    let controller: BroadcastMirrorController
+    let sdlController: SdlBroadcastController
     private let sdlSession: SdlSession
     private weak var picker: RPSystemBroadcastPickerView?
-    /// Poll while the extension is live — Darwin can miss a beat across process boundaries.
     private var statusPoll: Timer?
-    /// Always-on accessory scan for the Idle Connection status panel.
     private var preflightPoll: Timer?
+    /// Cancels stale "extension never started" timeouts when a newer Start is tapped.
+    private var startGeneration = 0
 
     init() {
         controller = BroadcastMirrorController()
         sdlController = SdlBroadcastController()
-        // Build the SDL session first, then connect the Kotlin controller's state in (the closure has to
-        // be assigned after sdlController exists), and route start/stop from the UI down to the session.
         let sdlController = self.sdlController
         sdlSession = SdlSession(onState: { state in
             DispatchQueue.main.async {
@@ -44,19 +43,44 @@ final class BroadcastBridge: ObservableObject {
         MainViewControllerKt.MainViewController(naviliteController: controller, sdlController: sdlController)
     }
 
-    /// Called by `BroadcastPickerHost` once the (hidden) picker view exists.
     func register(_ picker: RPSystemBroadcastPickerView) { self.picker = picker }
 
     private func triggerPicker() {
-        // RPSystemBroadcastPickerView has no programmatic trigger, so tap its embedded button.
-        // Its view tree differs across iOS versions, so search recursively.
-        guard let picker = picker, let button = Self.firstButton(in: picker) else { return }
-        button.sendActions(for: .touchUpInside)
+        startGeneration += 1
+        let gen = startGeneration
+        controller.setAwaitingBroadcast()
+
+        // Prefer a real layout pass — off-screen pickers sometimes have no UIButton yet.
+        if let picker = picker {
+            picker.setNeedsLayout()
+            picker.layoutIfNeeded()
+        }
+
+        guard let picker = picker else {
+            controller.setPickerFailed(reason:
+                "System broadcast picker is not ready. Use the red record icon below the screen, or restart the app.")
+            return
+        }
+        guard let control = Self.firstBroadcastControl(in: picker) else {
+            controller.setPickerFailed(reason:
+                "Could not trigger the system sheet automatically. Tap the red record icon under Connection status instead.")
+            return
+        }
+        control.sendActions(for: .touchUpInside)
+
+        // If the extension never posts "started", the UI used to look like Start did nothing.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 12) { [weak self] in
+            guard let self = self, self.startGeneration == gen else { return }
+            self.controller.setBroadcastDidNotStart()
+        }
     }
 
-    private static func firstButton(in view: UIView) -> UIButton? {
-        if let button = view as? UIButton { return button }
-        for sub in view.subviews { if let b = firstButton(in: sub) { return b } }
+    /// ReplayKit's picker embeds a UIButton (sometimes nested); walk the tree broadly.
+    private static func firstBroadcastControl(in view: UIView) -> UIControl? {
+        if let c = view as? UIControl { return c }
+        for sub in view.subviews {
+            if let c = firstBroadcastControl(in: sub) { return c }
+        }
         return nil
     }
 
@@ -70,6 +94,7 @@ final class BroadcastBridge: ObservableObject {
             DispatchQueue.main.async {
                 switch raw {
                 case "app.pillion.broadcast.started":
+                    bridge.startGeneration += 1   // invalidate pending timeout
                     bridge.controller.setActive(active: true)
                     bridge.startStatusPoll()
                     bridge.pullStatus()
@@ -124,7 +149,6 @@ final class BroadcastBridge: ObservableObject {
         }
     }
 
-    /// Enumerate MFi accessories in the *app* process (no App Group). Shows on Idle immediately.
     private func publishPreflight() {
         let protocolId = BroadcastConfig.dashProtocol
         let accs = EAAccessoryManager.shared().connectedAccessories

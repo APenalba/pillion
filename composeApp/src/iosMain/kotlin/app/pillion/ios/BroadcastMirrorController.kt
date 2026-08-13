@@ -11,18 +11,11 @@ import platform.Foundation.NSUserDefaults
 /**
  * Backs the Pillion "Start mirroring" button on iOS with the ReplayKit Broadcast Upload Extension.
  *
- * iOS can only mirror the *whole* screen (any app, e.g. Waze) from a broadcast extension, which runs
- * out of process and keeps going while Pillion is backgrounded. So this controller doesn't stream
- * itself: [start]/[stop] just trigger the system broadcast picker — the Swift shell injects that as
- * [onToggle] — and the extension does the capture + NaviLite streaming. The extension posts Darwin
- * notifications on start/finish/status, which the Swift shell relays here via [setActive]/[applyStatus]
- * so the shared UI reflects live transport/handshake/fps without the app owning the link.
- *
- * [setPreflight] is fed by the app process itself (MFi accessory scan) so Connection status is visible
- * on the home screen *before* Start mirroring — no App Group / extension required for that hint.
+ * [start]/[stop] only open the system broadcast picker; the extension owns capture + NaviLite.
+ * Darwin notifications + [setActive]/[applyStatus] reflect live state. [setPreflight] is an in-app
+ * MFi scan so Connection status works before the extension starts.
  */
 class BroadcastMirrorController : MirrorController {
-    /** Set by the Swift shell: shows the system broadcast picker (start or stop). */
     var onToggle: (() -> Unit)? = null
 
     private var lastPreflight: String? = null
@@ -30,8 +23,6 @@ class BroadcastMirrorController : MirrorController {
     override val state: StateFlow<MirrorState> = _state.asStateFlow()
 
     override fun start(settings: MirrorSettings) {
-        // Hand the live settings to the out-of-process broadcast extension via the shared App Group
-        // (it can't read the app's own UserDefaults). The extension reads these at broadcastStarted.
         NSUserDefaults(suiteName = APP_GROUP)?.apply {
             setInteger(settings.maxFps.toLong(), forKey = "stream.maxFps")
             setInteger(settings.quality.toLong(), forKey = "stream.quality")
@@ -45,18 +36,59 @@ class BroadcastMirrorController : MirrorController {
         const val APP_GROUP = "group.app.pillion"
     }
 
-    /** Live MFi scan from the container app — updates Idle hint only (ignored while broadcasting). */
     fun setPreflight(hint: String) {
         lastPreflight = hint
+        // Don't clobber an in-progress "awaiting sheet / extension" message with a bare accessory scan.
         if (_state.value is MirrorState.Idle) {
+            val cur = (_state.value as MirrorState.Idle).hint.orEmpty()
+            if (cur.contains("Opening system") || cur.contains("did not start") ||
+                cur.contains("Could not trigger") || cur.contains("not ready")
+            ) {
+                // Keep the action message; refresh the accessory block above it if we can.
+                return
+            }
             _state.value = MirrorState.Idle(hint = hint)
         }
     }
 
-    /** Called by the Swift shell from the extension's broadcast start/finish Darwin notifications. */
+    /** Start was tapped — sheet should appear. Stay Idle so the button still says Start until the extension is live. */
+    fun setAwaitingBroadcast() {
+        _state.value = MirrorState.Idle(
+            hint = buildString {
+                append(lastPreflight ?: "CCU preflight pending…")
+                append("\n\n→ Opening system broadcast sheet…")
+                append("\nSelect Pillion Mirror → Start Broadcast.")
+                append("\nStop mirroring appears only after the extension actually starts.")
+                append("\nIf no sheet appears, tap the red record icon below.")
+            },
+        )
+    }
+
+    fun setPickerFailed(reason: String) {
+        _state.value = MirrorState.Idle(
+            hint = buildString {
+                append(lastPreflight ?: "")
+                append("\n\n⚠ "); append(reason)
+            },
+        )
+    }
+
+    /** Sheet was confirmed (or dismissed) but the extension never posted started — usually a dead appex. */
+    fun setBroadcastDidNotStart() {
+        if (_state.value !is MirrorState.Idle) return
+        _state.value = MirrorState.Idle(
+            hint = buildString {
+                append(lastPreflight ?: "")
+                append("\n\n⚠ Broadcast extension did not start.")
+                append("\nThe CCU is fine — this is an iOS install/signing issue with Pillion Mirror.")
+                append("\nTry: force-quit Pillion → delete app → reinstall IPA (AltStore/SideStore) →")
+                append(" tap the red record icon → Pillion Mirror → Start.")
+            },
+        )
+    }
+
     fun setActive(active: Boolean) {
         if (active) {
-            // Keep any richer status already applied; only seed a placeholder if still Idle/Error.
             if (_state.value is MirrorState.Idle || _state.value is MirrorState.Error) {
                 _state.value = MirrorState.Broadcasting(
                     headline = "Starting broadcast…",
@@ -68,10 +100,6 @@ class BroadcastMirrorController : MirrorController {
         }
     }
 
-    /**
-     * Live diagnostics from the extension (App Group + Darwin). Maps phase → UI state so a silent
-     * TCP fallback or handshake failure is visible on the phone, not only in Console.
-     */
     fun applyStatus(
         phase: String,
         transport: String,
@@ -96,8 +124,6 @@ class BroadcastMirrorController : MirrorController {
         }
         when (phase) {
             "error" -> {
-                // Broadcast is still live (ReplayKit) — keep Broadcasting so Stop works; Error would
-                // flip the button back to Start while the extension keeps capturing.
                 _state.value = MirrorState.Broadcasting(
                     headline = "Connection failed — tap Stop",
                     detail = detail,
@@ -114,7 +140,7 @@ class BroadcastMirrorController : MirrorController {
                     detail = detail,
                 )
             }
-            else -> { // streaming (and any unknown live phase)
+            else -> {
                 _state.value = MirrorState.Broadcasting(
                     headline = if (bikeFound) "Mirroring to bike" else "Mirroring (emulator only)",
                     detail = detail,

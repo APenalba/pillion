@@ -1,19 +1,25 @@
 import SwiftUI
 
-/// The iOS app: the shared Pillion Compose UI, with "Start mirroring" wired to the system screen
-/// broadcast (the upload extension does the capture + streaming). A hidden picker host sits off-screen
-/// so the Compose button can trigger it.
+/// Shared Compose UI + a visible ReplayKit broadcast picker fallback.
+/// Start mirroring programmatically taps that picker; if that fails on this iOS build, the user can
+/// tap the system icon directly.
 struct RootView: View {
     @StateObject private var bridge = BroadcastBridge()
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .bottom) {
             ComposeScreen { bridge.makeViewController() }
                 .ignoresSafeArea()
-            BroadcastPickerHost(bridge: bridge)
-                .frame(width: 44, height: 44)
-                .position(x: -200, y: -200)   // kept in the hierarchy but off-screen
-                .allowsHitTesting(false)
+
+            VStack(spacing: 4) {
+                Text("Broadcast (tap if Start does nothing)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                BroadcastPickerHost(bridge: bridge)
+                    .frame(width: 44, height: 44)
+            }
+            // Sit above the Compose primary button (~56pt) + padding.
+            .padding(.bottom, 88)
         }
     }
 }
