@@ -26,6 +26,18 @@ jobs:
           brew install xcodegen
           xcodegen --version
 
+      - name: Create unsigned signing configuration
+        working-directory: iosApp
+        run: |
+          cat > Signing.xcconfig <<'EOF'
+          CODE_SIGNING_ALLOWED = NO
+          CODE_SIGNING_REQUIRED = NO
+          CODE_SIGN_IDENTITY =
+          EOF
+
+          echo "Created iosApp/Signing.xcconfig:"
+          cat Signing.xcconfig
+
       - name: Make build script executable
         working-directory: iosApp
         run: chmod +x build-ipa.sh
