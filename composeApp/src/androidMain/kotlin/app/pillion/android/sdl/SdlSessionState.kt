@@ -10,5 +10,5 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * `SdlMirrorController` exposes this flow to the Compose UI.
  */
 object SdlSessionState {
-    val state = MutableStateFlow<MirrorState>(MirrorState.Idle)
+    val state = MutableStateFlow<MirrorState>(MirrorState.Idle())
 }

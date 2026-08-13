@@ -17,7 +17,7 @@ class SdlBroadcastController : MirrorController {
     var onStart: (() -> Unit)? = null
     var onStop: (() -> Unit)? = null
 
-    private val _state = MutableStateFlow<MirrorState>(MirrorState.Idle)
+    private val _state = MutableStateFlow<MirrorState>(MirrorState.Idle())
     override val state: StateFlow<MirrorState> = _state.asStateFlow()
 
     override fun start(settings: MirrorSettings) { onStart?.invoke() }
@@ -25,7 +25,7 @@ class SdlBroadcastController : MirrorController {
 
     // Called from Swift as the SDL lifecycle advances. (Broadcasting, not Streaming(fps,kb): SDL owns the
     // encoder/timing, so the app knows it's projecting but not the live frame stats.)
-    fun setIdle() { _state.value = MirrorState.Idle }
+    fun setIdle() { _state.value = MirrorState.Idle() }
     fun setConnecting() { _state.value = MirrorState.Connecting }
     fun setStreaming() { _state.value = MirrorState.Broadcasting() }
     fun setError(message: String) { _state.value = MirrorState.Error(message) }

@@ -94,10 +94,10 @@ class HeadUnitTest {
     @Test
     fun unsupported_controller_errors_on_start_and_clears_on_stop() {
         val c = UnsupportedController("nope")
-        assertEquals(MirrorState.Idle, c.state.value)
+        assertEquals(MirrorState.Idle(), c.state.value)
         c.start(MirrorSettings())
         assertEquals(MirrorState.Error("nope"), c.state.value)
         c.stop()
-        assertEquals(MirrorState.Idle, c.state.value)
+        assertEquals(MirrorState.Idle(), c.state.value)
     }
 }

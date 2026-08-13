@@ -2,7 +2,12 @@ package app.pillion.core
 
 /** The single source of truth the UI renders. */
 sealed interface MirrorState {
-    data object Idle : MirrorState
+    /**
+     * Not mirroring. [hint] is optional live preflight (e.g. iOS MFi accessory scan) so the home
+     * screen can show CCU found/missing *before* Start mirroring — not only after broadcast starts.
+     */
+    data class Idle(val hint: String? = null) : MirrorState
+
     data object Connecting : MirrorState
     data class Streaming(val fps: Double, val kbPerFrame: Int) : MirrorState
 

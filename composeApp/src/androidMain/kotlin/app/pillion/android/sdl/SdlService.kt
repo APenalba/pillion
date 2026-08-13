@@ -74,7 +74,7 @@ class SdlService : Service() {
             setUserStopped(this, true)
             sdlManager?.dispose()
             sdlManager = null
-            SdlSessionState.state.value = MirrorState.Idle
+            SdlSessionState.state.value = MirrorState.Idle()
             stopSelf()
             return START_NOT_STICKY
         }
@@ -198,7 +198,7 @@ class SdlService : Service() {
 
             override fun onDestroy() {
                 Logger.d("sdl: session ended (onDestroy)")
-                SdlSessionState.state.value = MirrorState.Idle
+                SdlSessionState.state.value = MirrorState.Idle()
                 stopSelf()
             }
 
@@ -364,7 +364,7 @@ class SdlService : Service() {
         releaseWakeLock()
         if (stopping) {
             // Deliberate Stop: don't bounce to Connecting — the service is going Idle.
-            SdlSessionState.state.value = MirrorState.Idle
+            SdlSessionState.state.value = MirrorState.Idle()
             return
         }
         SdlSessionState.state.value = MirrorState.Connecting
@@ -397,7 +397,7 @@ class SdlService : Service() {
         releaseWakeLock()
         sdlManager?.dispose()
         sdlManager = null
-        SdlSessionState.state.value = MirrorState.Idle
+        SdlSessionState.state.value = MirrorState.Idle()
         super.onDestroy()
     }
 

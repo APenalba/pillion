@@ -24,7 +24,7 @@ class MirrorEngine(
     private val maxFps: Int = 15,
     private val imageType: Int = 3, // NAVIGATION_EXPANDED
 ) {
-    private val _state = MutableStateFlow<MirrorState>(MirrorState.Idle)
+    private val _state = MutableStateFlow<MirrorState>(MirrorState.Idle())
     val state: StateFlow<MirrorState> = _state.asStateFlow()
 
     private val minIntervalMs: Long = if (maxFps in 1..59) 1000L / maxFps else 0L
@@ -65,7 +65,7 @@ class MirrorEngine(
         running = false
         runCatching { channel.close() } // unblocks the blocking reader
         job = null
-        _state.value = MirrorState.Idle
+        _state.value = MirrorState.Idle()
     }
 
     private suspend fun streamLoop(reader: FrameReader) {

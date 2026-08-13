@@ -69,27 +69,86 @@ internal fun HomeScreen(
                 )
             }
         }
+        Spacer(Modifier.height(12.dp))
+        // Always visible — this is the diagnostics panel (not a system status bar). Shown on the
+        // home screen even before Start mirroring so a missing CCU is obvious without Console.
+        ConnectionPanel(state)
+        Spacer(Modifier.height(12.dp))
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            if (state is MirrorState.Idle) {
-                Column(
-                    modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.Center,
-                ) {
+            Column(
+                modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+                verticalArrangement = if (state is MirrorState.Idle) Arrangement.Top else Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                if (state is MirrorState.Idle) {
                     ConnectGuide()
-                }
-            } else {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
+                } else {
                     StatusDisplay(state)
                 }
             }
         }
         PrimaryButton(state, onStart, onStop)
+    }
+}
+
+@Composable
+private fun ConnectionPanel(state: MirrorState) {
+    val (title, body, warning) = when (state) {
+        is MirrorState.Idle -> Triple(
+            "Connection status",
+            state.hint ?: "Scanning for the bike’s CCU…",
+            state.hint?.contains("NOT found", ignoreCase = true) == true ||
+                state.hint?.contains("none", ignoreCase = true) == true,
+        )
+        MirrorState.Connecting -> Triple("Connection status", "Connecting to dash…", false)
+        is MirrorState.Streaming -> Triple(
+            "Streaming",
+            "${formatFps(state.fps)} fps • ${state.kbPerFrame} KB/frame",
+            false,
+        )
+        is MirrorState.Broadcasting -> Triple(
+            state.headline,
+            state.detail ?: "Broadcast active — open this screen (not Maps) to read live diagnostics.",
+            state.headline.contains("failed", ignoreCase = true) ||
+                state.detail?.contains("NOT found") == true ||
+                state.detail?.contains("emulator") == true,
+        )
+        is MirrorState.Error -> Triple("Disconnected", state.message, true)
+    }
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = if (warning) {
+            MaterialTheme.colorScheme.error.copy(alpha = 0.12f)
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)
+        },
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                StatusDot(
+                    if (warning) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.primary,
+                )
+                Spacer(Modifier.size(10.dp))
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (warning) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                body,
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Start,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
     }
 }
 
@@ -142,7 +201,7 @@ private fun Wordmark() {
 private fun StatusDisplay(state: MirrorState) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         when (state) {
-            MirrorState.Idle -> Unit
+            is MirrorState.Idle -> Unit
             MirrorState.Connecting -> {
                 CircularProgressIndicator(
                     color = MaterialTheme.colorScheme.primary,
@@ -165,25 +224,9 @@ private fun StatusDisplay(state: MirrorState) {
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    "mirroring • ${state.kbPerFrame} KB per frame",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
             is MirrorState.Broadcasting -> {
-                val warning = state.headline.contains("failed", ignoreCase = true) ||
-                    state.detail?.contains("NOT found") == true ||
-                    state.detail?.contains("emulator") == true
-                StatusDot(
-                    if (warning) MaterialTheme.colorScheme.error
-                    else MaterialTheme.colorScheme.primary,
-                )
-                Spacer(Modifier.height(14.dp))
-                Text(state.headline, style = MaterialTheme.typography.titleMedium)
                 if (state.fps != null) {
-                    Spacer(Modifier.height(8.dp))
                     Text(
                         formatFps(state.fps),
                         fontSize = 48.sp,
@@ -192,37 +235,20 @@ private fun StatusDisplay(state: MirrorState) {
                         color = MaterialTheme.colorScheme.primary,
                     )
                     Text(
-                        buildString {
-                            append("fps")
-                            state.kbPerFrame?.let { append(" • "); append(it); append(" KB/frame") }
-                        },
+                        "fps on dash link",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    Spacer(Modifier.height(10.dp))
                 }
-                state.detail?.let { detail ->
-                    Spacer(Modifier.height(12.dp))
-                    Text(
-                        detail,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Start,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-            }
-            is MirrorState.Error -> {
-                StatusDot(MaterialTheme.colorScheme.error)
-                Spacer(Modifier.height(14.dp))
-                Text("Disconnected", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    state.message,
+                    "Keep Pillion open to watch this panel — Maps/Waze hides it.",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
                 )
             }
+            is MirrorState.Error -> Unit
         }
     }
 }
@@ -238,9 +264,9 @@ private fun ConnectGuide() {
         "Pair your phone with the bike in Bluetooth settings (one time). StreetCross must be closed — only one app can hold the NaviLite link.",
         "Mount the phone in landscape and turn on auto-rotate, so the map fills the dash.",
         "On the bike, switch the dash to Navigation mode (same as for StreetCross).",
+        "Check Connection status above — it must say CCU found before you start.",
         "Tap Start mirroring, then choose \"Pillion Mirror\" / Entire screen and allow capture.",
-        "Watch the status below Start — it must say Transport: bike. If it says emulator, the dash will stay blank.",
-        "Open Waze or Google Maps — it appears on your dash.",
+        "Stay on Pillion a few seconds to confirm Transport: bike, then open Maps/Waze.",
     )
     Column(Modifier.fillMaxWidth()) {
         Text(

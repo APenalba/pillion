@@ -17,12 +17,16 @@ import platform.Foundation.NSUserDefaults
  * [onToggle] — and the extension does the capture + NaviLite streaming. The extension posts Darwin
  * notifications on start/finish/status, which the Swift shell relays here via [setActive]/[applyStatus]
  * so the shared UI reflects live transport/handshake/fps without the app owning the link.
+ *
+ * [setPreflight] is fed by the app process itself (MFi accessory scan) so Connection status is visible
+ * on the home screen *before* Start mirroring — no App Group / extension required for that hint.
  */
 class BroadcastMirrorController : MirrorController {
     /** Set by the Swift shell: shows the system broadcast picker (start or stop). */
     var onToggle: (() -> Unit)? = null
 
-    private val _state = MutableStateFlow<MirrorState>(MirrorState.Idle)
+    private var lastPreflight: String? = null
+    private val _state = MutableStateFlow<MirrorState>(MirrorState.Idle())
     override val state: StateFlow<MirrorState> = _state.asStateFlow()
 
     override fun start(settings: MirrorSettings) {
@@ -41,6 +45,14 @@ class BroadcastMirrorController : MirrorController {
         const val APP_GROUP = "group.app.pillion"
     }
 
+    /** Live MFi scan from the container app — updates Idle hint only (ignored while broadcasting). */
+    fun setPreflight(hint: String) {
+        lastPreflight = hint
+        if (_state.value is MirrorState.Idle) {
+            _state.value = MirrorState.Idle(hint = hint)
+        }
+    }
+
     /** Called by the Swift shell from the extension's broadcast start/finish Darwin notifications. */
     fun setActive(active: Boolean) {
         if (active) {
@@ -48,11 +60,11 @@ class BroadcastMirrorController : MirrorController {
             if (_state.value is MirrorState.Idle || _state.value is MirrorState.Error) {
                 _state.value = MirrorState.Broadcasting(
                     headline = "Starting broadcast…",
-                    detail = "Waiting for extension status…",
+                    detail = "Waiting for extension status…\n\nLast preflight:\n${lastPreflight ?: "(none yet)"}",
                 )
             }
         } else {
-            _state.value = MirrorState.Idle
+            _state.value = MirrorState.Idle(hint = lastPreflight)
         }
     }
 
@@ -91,7 +103,7 @@ class BroadcastMirrorController : MirrorController {
                     detail = detail,
                 )
             }
-            "stopped" -> _state.value = MirrorState.Idle
+            "stopped" -> _state.value = MirrorState.Idle(hint = lastPreflight)
             "looking", "connecting", "handshake" -> {
                 _state.value = MirrorState.Broadcasting(
                     headline = when (phase) {

@@ -381,7 +381,7 @@ class CaptureService : Service() {
         }.start()
         scope.cancel()
         releaseWakeLock()
-        _state.value = MirrorState.Idle
+        _state.value = MirrorState.Idle()
         super.onDestroy()
     }
 
@@ -459,7 +459,7 @@ class CaptureService : Service() {
         @Volatile var resultCode: Int = 0
         @Volatile var resultData: Intent? = null
 
-        private val _state = MutableStateFlow<MirrorState>(MirrorState.Idle)
+        private val _state = MutableStateFlow<MirrorState>(MirrorState.Idle())
         val state: StateFlow<MirrorState> = _state.asStateFlow()
     }
 }

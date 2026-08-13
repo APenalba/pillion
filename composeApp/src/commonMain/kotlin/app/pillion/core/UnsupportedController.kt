@@ -9,8 +9,8 @@ import kotlinx.coroutines.flow.asStateFlow
  * the native side is being wired). Starting it surfaces a clear message instead of crashing.
  */
 class UnsupportedController(private val reason: String) : MirrorController {
-    private val _state = MutableStateFlow<MirrorState>(MirrorState.Idle)
+    private val _state = MutableStateFlow<MirrorState>(MirrorState.Idle())
     override val state: StateFlow<MirrorState> = _state.asStateFlow()
     override fun start(settings: MirrorSettings) { _state.value = MirrorState.Error(reason) }
-    override fun stop() { _state.value = MirrorState.Idle }
+    override fun stop() { _state.value = MirrorState.Idle() }
 }

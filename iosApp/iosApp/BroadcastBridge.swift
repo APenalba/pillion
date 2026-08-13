@@ -1,10 +1,12 @@
 import SwiftUI
 import ReplayKit
+import ExternalAccessory
 import ComposeApp
 
 /// Connects the shared Compose UI to iOS screen broadcasting:
 /// - the Pillion "Start mirroring" button → triggers the system broadcast picker,
-/// - the extension's broadcast start/stop/status Darwin notifications → the shared `MirrorState`.
+/// - the extension's broadcast start/stop/status Darwin notifications → the shared `MirrorState`,
+/// - a live MFi accessory preflight so Connection status is visible *before* Start mirroring.
 final class BroadcastBridge: ObservableObject {
     let controller: BroadcastMirrorController        // NaviLite (Bluetooth / MFi via ReplayKit)
     let sdlController: SdlBroadcastController         // SDL (USB / iAP2)
@@ -12,6 +14,8 @@ final class BroadcastBridge: ObservableObject {
     private weak var picker: RPSystemBroadcastPickerView?
     /// Poll while the extension is live — Darwin can miss a beat across process boundaries.
     private var statusPoll: Timer?
+    /// Always-on accessory scan for the Idle Connection status panel.
+    private var preflightPoll: Timer?
 
     init() {
         controller = BroadcastMirrorController()
@@ -33,6 +37,7 @@ final class BroadcastBridge: ObservableObject {
         self.sdlController.onStart = { [weak self] in self?.sdlSession.start() }
         self.sdlController.onStop = { [weak self] in self?.sdlSession.stop() }
         observeBroadcastState()
+        startPreflightPoll()
     }
 
     func makeViewController() -> UIViewController {
@@ -71,6 +76,7 @@ final class BroadcastBridge: ObservableObject {
                 case "app.pillion.broadcast.stopped":
                     bridge.stopStatusPoll()
                     bridge.controller.setActive(active: false)
+                    bridge.publishPreflight()
                 case BroadcastStatus.updated:
                     bridge.pullStatus()
                 default: break
@@ -109,5 +115,28 @@ final class BroadcastBridge: ObservableObject {
     private func stopStatusPoll() {
         statusPoll?.invalidate()
         statusPoll = nil
+    }
+
+    private func startPreflightPoll() {
+        publishPreflight()
+        preflightPoll = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            self?.publishPreflight()
+        }
+    }
+
+    /// Enumerate MFi accessories in the *app* process (no App Group). Shows on Idle immediately.
+    private func publishPreflight() {
+        let protocolId = BroadcastConfig.dashProtocol
+        let accs = EAAccessoryManager.shared().connectedAccessories
+        let bikeFound = accs.contains { $0.protocolStrings.contains(protocolId) }
+        let lines: String
+        if accs.isEmpty {
+            lines = "MFi accessories: none\nCCU (\(protocolId)): NOT found\n\nPair the bike in Bluetooth settings, close StreetCross, put the dash in Navigation mode."
+        } else {
+            let list = accs.map { "• \($0.name): \($0.protocolStrings.joined(separator: ", "))" }
+                .joined(separator: "\n")
+            lines = "MFi accessories:\n\(list)\n\nCCU (\(protocolId)): \(bikeFound ? "found ✓" : "NOT found")"
+        }
+        controller.setPreflight(hint: lines)
     }
 }
