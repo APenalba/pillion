@@ -46,6 +46,26 @@ class SampleHandler: RPBroadcastSampleHandler {
     private var sendInterval = 1.0 / Double(BroadcastConfig.maxFps)
     private var jpegQuality = 0.4
 
+    /// Latest status fields (updated from the sender thread; published atomically via BroadcastStatus).
+    private var statusPhase = "looking"
+    private var statusTransport = "none"
+    private var statusBikeFound = false
+    private var statusAccessories = "none"
+    private var statusMessage = ""
+    private var statusFps = 0.0
+    private var statusKb = 0
+
+    private func publishStatus() {
+        BroadcastStatus.publish(BroadcastStatus.Snapshot(
+            phase: statusPhase,
+            transport: statusTransport,
+            bikeFound: statusBikeFound,
+            accessories: statusAccessories,
+            message: statusMessage,
+            fps: statusFps,
+            kbPerFrame: statusKb))
+    }
+
     override func broadcastStarted(withSetupInfo setupInfo: [String: NSObject]?) {
         running = true
         // Pull the user's live Settings (fps / quality) from the App Group.
@@ -61,6 +81,26 @@ class SampleHandler: RPBroadcastSampleHandler {
         extLog("PillionExt: \(accs.count) connected accessory(ies)")
         for a in accs { extLog("PillionExt:  • \(a.name) — protocols=\(a.protocolStrings)") }
         let hasBike = accs.contains { $0.protocolStrings.contains(BroadcastConfig.dashProtocol) }
+        let accLines: String
+        if accs.isEmpty {
+            accLines = "none — phone not paired to CCU as MFi, or StreetCross still holds the link"
+        } else {
+            accLines = accs.map { "\($0.name): \($0.protocolStrings.joined(separator: ", "))" }
+                .joined(separator: "\n")
+        }
+        statusAccessories = accLines
+        statusBikeFound = hasBike
+        statusTransport = hasBike ? "bike" : "emulator"
+        statusPhase = "connecting"
+        if hasBike {
+            statusMessage = "Opening External Accessory session…"
+        } else {
+            statusMessage =
+                "No CCU advertising \(BroadcastConfig.dashProtocol). Falling back to TCP emulator " +
+                "(\(BroadcastConfig.emulatorHost):\(BroadcastConfig.emulatorPort)) — the bike will show nothing. " +
+                "Pair the bike in Bluetooth settings, close StreetCross, put the dash in Navigation mode, retry."
+        }
+        publishStatus()
         let c: DashConn = hasBike ? EAConn()
                                   : TCPConn(host: BroadcastConfig.emulatorHost, port: BroadcastConfig.emulatorPort)
         c.logger = { s in extLog("PillionExt: \(s)") }
@@ -70,9 +110,23 @@ class SampleHandler: RPBroadcastSampleHandler {
             guard let self = self else { return }
             do {
                 try self.conn.connect()
+                self.statusPhase = "handshake"
+                self.statusMessage = "Connected — NaviLite auth + setup…"
+                self.publishStatus()
                 try self.handshake()
+                self.statusPhase = "streaming"
+                self.statusMessage = hasBike
+                    ? "Streaming to bike over Bluetooth / MFi"
+                    : "Streaming to TCP emulator (bike not linked)"
+                self.publishStatus()
                 self.pushLoop()
-            } catch { extLog("PillionExt connect err: \((error as NSError).localizedDescription)") }
+            } catch {
+                let msg = (error as NSError).localizedDescription
+                extLog("PillionExt connect err: \(msg)")
+                self.statusPhase = "error"
+                self.statusMessage = msg
+                self.publishStatus()
+            }
         }
     }
 
@@ -161,8 +215,16 @@ class SampleHandler: RPBroadcastSampleHandler {
             inFlight.append(Date())
             let dt = Date().timeIntervalSince(t0)
             if dt >= 1 {
+                let fps = Double(acks) / dt
+                let kb = jpg.count / 1024
+                let ackMs = ackTotal / Double(max(acks, 1)) * 1000
                 extLog(String(format: "PillionExt: FPS %.1f  %dKB  ack %.0fms  q%.2f d%.1f",
-                              Double(acks) / dt, jpg.count / 1024, ackTotal / Double(max(acks, 1)) * 1000, q, detail))
+                              fps, kb, ackMs, q, detail))
+                statusFps = fps
+                statusKb = kb
+                statusPhase = "streaming"
+                statusMessage = String(format: "ack %.0fms  q%.2f  detail%.1f", ackMs, q, detail)
+                publishStatus()
                 acks = 0; ackTotal = 0; t0 = Date()
             }
         }
@@ -221,7 +283,12 @@ class SampleHandler: RPBroadcastSampleHandler {
 
     override func broadcastFinished() {
         running = false
+        statusPhase = "stopped"
+        statusMessage = "Broadcast stopped"
+        statusFps = 0
+        publishStatus()
         BroadcastSignal.post(BroadcastSignal.stopped)
+        BroadcastStatus.clear()
         lock.lock(); latestPixels = nil; lock.unlock()   // release the last retained pixel buffer
         conn?.close()
     }

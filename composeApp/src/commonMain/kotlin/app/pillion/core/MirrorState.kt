@@ -7,9 +7,16 @@ sealed interface MirrorState {
     data class Streaming(val fps: Double, val kbPerFrame: Int) : MirrorState
 
     /**
-     * An out-of-process broadcaster (the iOS ReplayKit upload extension) is mirroring the whole
-     * screen. The app knows it's active, not the live fps (that lives in the extension process).
+     * An out-of-process broadcaster (iOS ReplayKit extension, or SDL screen-mirror) is projecting.
+     * [detail] carries live diagnostics from the extension (transport, accessories, handshake) so a
+     * bike that isn't receiving frames is diagnosable in-app instead of only in Console logs.
      */
-    data object Broadcasting : MirrorState
+    data class Broadcasting(
+        val headline: String = "Broadcasting",
+        val detail: String? = null,
+        val fps: Double? = null,
+        val kbPerFrame: Int? = null,
+    ) : MirrorState
+
     data class Error(val message: String) : MirrorState
 }

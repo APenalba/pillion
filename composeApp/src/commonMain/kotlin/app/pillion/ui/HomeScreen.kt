@@ -78,7 +78,13 @@ internal fun HomeScreen(
                     ConnectGuide()
                 }
             } else {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
                     StatusDisplay(state)
                 }
             }
@@ -166,17 +172,45 @@ private fun StatusDisplay(state: MirrorState) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            MirrorState.Broadcasting -> {
-                StatusDot(MaterialTheme.colorScheme.primary)
-                Spacer(Modifier.height(14.dp))
-                Text("Broadcasting", style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "Open Waze or Google Maps — it's on your dash.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
+            is MirrorState.Broadcasting -> {
+                val warning = state.headline.contains("failed", ignoreCase = true) ||
+                    state.detail?.contains("NOT found") == true ||
+                    state.detail?.contains("emulator") == true
+                StatusDot(
+                    if (warning) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.primary,
                 )
+                Spacer(Modifier.height(14.dp))
+                Text(state.headline, style = MaterialTheme.typography.titleMedium)
+                if (state.fps != null) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        formatFps(state.fps),
+                        fontSize = 48.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                        buildString {
+                            append("fps")
+                            state.kbPerFrame?.let { append(" • "); append(it); append(" KB/frame") }
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                state.detail?.let { detail ->
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        detail,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Start,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
             is MirrorState.Error -> {
                 StatusDot(MaterialTheme.colorScheme.error)
@@ -201,10 +235,11 @@ private fun StatusDot(color: Color) {
 @Composable
 private fun ConnectGuide() {
     val steps = listOf(
-        "Pair your phone with the bike in your Bluetooth settings (one time only).",
+        "Pair your phone with the bike in Bluetooth settings (one time). StreetCross must be closed — only one app can hold the NaviLite link.",
         "Mount the phone in landscape and turn on auto-rotate, so the map fills the dash.",
-        "On the bike, switch the dash to Navigation mode.",
-        "Tap Start mirroring, then choose \"Entire screen\" and allow capture.",
+        "On the bike, switch the dash to Navigation mode (same as for StreetCross).",
+        "Tap Start mirroring, then choose \"Pillion Mirror\" / Entire screen and allow capture.",
+        "Watch the status below Start — it must say Transport: bike. If it says emulator, the dash will stay blank.",
         "Open Waze or Google Maps — it appears on your dash.",
     )
     Column(Modifier.fillMaxWidth()) {

@@ -27,6 +27,6 @@ class SdlBroadcastController : MirrorController {
     // encoder/timing, so the app knows it's projecting but not the live frame stats.)
     fun setIdle() { _state.value = MirrorState.Idle }
     fun setConnecting() { _state.value = MirrorState.Connecting }
-    fun setStreaming() { _state.value = MirrorState.Broadcasting }
+    fun setStreaming() { _state.value = MirrorState.Broadcasting() }
     fun setError(message: String) { _state.value = MirrorState.Error(message) }
 }

@@ -318,7 +318,7 @@ class SdlService : Service() {
                 if (success) {
                     val displayClass: Class<out SdlRemoteDisplay> = ScreenMirrorDisplay::class.java
                     vsm.startRemoteDisplayStream(applicationContext, displayClass, params, false)
-                    SdlSessionState.state.value = MirrorState.Broadcasting
+                    SdlSessionState.state.value = MirrorState.Broadcasting()
                     Logger.d("sdl: screen-mirror stream requested — look at the dash")
                 } else {
                     Logger.d("sdl: VideoStreamManager.start() reported failure")

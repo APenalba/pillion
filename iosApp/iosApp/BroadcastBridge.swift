@@ -4,12 +4,14 @@ import ComposeApp
 
 /// Connects the shared Compose UI to iOS screen broadcasting:
 /// - the Pillion "Start mirroring" button → triggers the system broadcast picker,
-/// - the extension's broadcast start/stop Darwin notifications → the shared `MirrorState`.
+/// - the extension's broadcast start/stop/status Darwin notifications → the shared `MirrorState`.
 final class BroadcastBridge: ObservableObject {
     let controller: BroadcastMirrorController        // NaviLite (Bluetooth / MFi via ReplayKit)
     let sdlController: SdlBroadcastController         // SDL (USB / iAP2)
     private let sdlSession: SdlSession
     private weak var picker: RPSystemBroadcastPickerView?
+    /// Poll while the extension is live — Darwin can miss a beat across process boundaries.
+    private var statusPoll: Timer?
 
     init() {
         controller = BroadcastMirrorController()
@@ -59,11 +61,53 @@ final class BroadcastBridge: ObservableObject {
         let callback: CFNotificationCallback = { _, observer, name, _, _ in
             guard let observer = observer, let name = name else { return }
             let bridge = Unmanaged<BroadcastBridge>.fromOpaque(observer).takeUnretainedValue()
-            let active = (name.rawValue as String) == "app.pillion.broadcast.started"
-            DispatchQueue.main.async { bridge.controller.setActive(active: active) }
+            let raw = name.rawValue as String
+            DispatchQueue.main.async {
+                switch raw {
+                case "app.pillion.broadcast.started":
+                    bridge.controller.setActive(active: true)
+                    bridge.startStatusPoll()
+                    bridge.pullStatus()
+                case "app.pillion.broadcast.stopped":
+                    bridge.stopStatusPoll()
+                    bridge.controller.setActive(active: false)
+                case BroadcastStatus.updated:
+                    bridge.pullStatus()
+                default: break
+                }
+            }
         }
-        for name in ["app.pillion.broadcast.started", "app.pillion.broadcast.stopped"] {
+        for name in [
+            "app.pillion.broadcast.started",
+            "app.pillion.broadcast.stopped",
+            BroadcastStatus.updated,
+        ] {
             CFNotificationCenterAddObserver(center, me, callback, name as CFString, nil, .deliverImmediately)
         }
+    }
+
+    private func pullStatus() {
+        guard let snap = BroadcastStatus.read() else { return }
+        controller.applyStatus(
+            phase: snap.phase,
+            transport: snap.transport,
+            bikeFound: snap.bikeFound,
+            accessories: snap.accessories,
+            message: snap.message,
+            fps: snap.fps,
+            kbPerFrame: Int32(snap.kbPerFrame)
+        )
+    }
+
+    private func startStatusPoll() {
+        stopStatusPoll()
+        statusPoll = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            self?.pullStatus()
+        }
+    }
+
+    private func stopStatusPoll() {
+        statusPoll?.invalidate()
+        statusPoll = nil
     }
 }
